@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lector QR Mejorado</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    body{margin:0;background:#ffffff;color:#E6EEF8;display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px;min-height:100vh}
+    .card{background:#547e33;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,.6);max-width:780px;width:100%}
+    h1{margin:0;font-size:18px}
+    p{margin:8px 0 0 0;color:#AFC6E8;font-size:13px}
+    .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    button,input[type=file]{background:#0B1224;color:#CFE0FF;border:0;padding:10px 12px;border-radius:8px;cursor:pointer}
+    button.secondary{background:#122235}
+    #video{width:100%;max-height:420px;border-radius:8px;background:#000;object-fit:cover}
+    .result{margin-top:12px;padding:10px;border-radius:8px;background:#04b177;color:#E6F6FF;word-break:break-all;text-align:center;font-weight:bold}
+    .small{font-size:13px;color:#9FB6D8}
+    canvas.hidden{display:none}
+    .overlay{position:relative}
+    .box{position:absolute;left:0;top:0;pointer-events:none}
+    footer{margin-top:10px;color:#8EA7CD;font-size:13px}
+    
+    /* Estilos para análisis inteligente */
+    .analysis-section {
+      margin-top: 20px;
+      padding: 15px;
+      background: #04b177;
+      border-radius: 8px;
+    }
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 10px;
+    }
+    @media (max-width: 600px) {.analysis-grid{grid-template-columns:1fr}}
+    .analysis-item {
+      background: #000000;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .analysis-label {font-size:12px;color:#9FB6D8;margin-bottom:5px;}
+    .analysis-value {color:#E6F6FF;font-weight:500;}
+    .ai-note {
+      margin-top: 15px;
+      padding: 12px;
+      background: #071A2B;
+      border-radius: 8px;
+      border-left: 3px solid #00FFAA;
+    }
+    .ai-note-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .ai-icon {color: #00FFAA;font-weight: bold;}
+    
+    /* Ventana admin */
+    .admin-window {
+      position: fixed;top: 0;left: 0;width: 100%;height: 100%;
+      background: rgba(0, 0, 0, 0.8);display: flex;justify-content: center;align-items: center;z-index: 1000;display:none;
+    }
+    .admin-content {
+      background: #547e33;border-radius: 12px;padding: 20px;width: 90%;max-width: 800px;max-height: 90vh;overflow-y: auto;
+      box-shadow: 0 6px 18px rgba(2,6,23,.6);
+    }
+    .admin-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+    .admin-title{margin:0;color:#E6F6FF;}
+    .close-btn{background:#0B1224;color:#CFE0FF;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;}
+    .admin-form{display:grid;grid-template-columns:1fr 1fr;gap:15px;}
+    @media (max-width:600px){.admin-form{grid-template-columns:1fr}}
+    .form-group{margin-bottom:10px;}
+    .form-label{display:block;margin-bottom:5px;color:#9FB6D8;font-size:13px;}
+    .form-input{width:100%;padding:10px;border-radius:8px;border:1px solid #122235;background:#071A2B;color:#E6F6FF;box-sizing:border-box;}
+    .form-input:focus{outline:none;border-color:#00FFAA;}
+    .full-width{grid-column:1/-1;}
+    .save-btn{background:#00FFAA;color:#0B1224;border:none;padding:12px 20px;border-radius:8px;cursor:pointer;font-weight:bold;margin-top:20px;width:100%;}
+    .save-btn:hover{background:#00cc88;}
+    .qr-display{text-align:center;margin-top:20px;padding:20px;background:#071A2B;border-radius:8px;display:none;}
+    .qr-code-container{display:inline-block;padding:10px;background:white;border-radius:8px;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Lector QR — Mejorado</h1>
+    <p class="small">Escanea un código QR y analiza la información registrada en el panel de administración.</p>
+
+    <div class="controls">
+      <button id="startBtn">Iniciar cámara</button>
+      <button id="stopBtn" class="secondary" disabled>Detener cámara</button>
+      <label style="display:inline-flex;align-items:center;gap:8px">
+        <input id="fileInput" type="file" accept="image/*" style="display:none">
+        <button id="pickFileBtn" class="secondary">Cargar imagen</button>
+      </label>
+      <button id="adminBtn" class="secondary">Admin</button>
+    </div>
+
+    <div class="overlay" style="margin-top:12px;">
+      <video id="video" playsinline></video>
+      <canvas id="overlayCanvas" class="box"></canvas>
+    </div>
+
+    <canvas id="hiddenCanvas" class="hidden"></canvas>
+
+    <!-- RESULTADO SIMPLIFICADO -->
+    <div id="result" class="result">Esperando escaneo...</div>
+
+    <!-- SECCIÓN DE ANÁLISIS INTELIGENTE -->
+    <div class="analysis-section">
+      <h3>Análisis Inteligente del QR</h3>
+      <div class="analysis-grid">
+        <div class="analysis-item"><div class="analysis-label">Creado por</div><div id="displayCompany" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Creado en</div><div id="displayCountry" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Usuario</div><div id="displayUserName" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Correo Electrónico</div><div id="displayUserEmail" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Categoría</div><div id="displayCategory" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Subcategoría</div><div id="displaySubcategory" class="analysis-value">—</div></div>
+        <div class="analysis-item"><div class="analysis-label">Peso</div><div id="displayWeight" class="analysis-value">—</div></div>
+      </div>
+      <div class="ai-note">
+        <div class="ai-note-header">
+          <span class="ai-icon">🤖</span>
+          <strong>Nota del Sistema</strong>
+        </div>
+        <div id="aiNote" class="analysis-value">Esperando escaneo para mostrar los datos registrados...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ventana Admin -->
+  <div class="admin-window" id="adminWindow">
+    <div class="admin-content">
+      <div class="admin-header">
+        <h3 class="admin-title">Panel de Administración</h3>
+        <button class="close-btn" id="closeAdminBtn">Cerrar</button>
+      </div>
+
+      <form class="admin-form" id="adminForm">
+        <div class="form-group"><label class="form-label">Empresa:</label><input type="text" class="form-input" id="company" placeholder="Nombre de la empresa"></div>
+        <div class="form-group"><label class="form-label">País:</label><input type="text" class="form-input" id="country" placeholder="Nombre del país"></div>
+        <div class="form-group"><label class="form-label">Usuario:</label><input type="text" class="form-input" id="adminUserName" placeholder="Nombre del usuario"></div>
+        <div class="form-group"><label class="form-label">Correo Electrónico:</label><input type="email" class="form-input" id="adminUserEmail" placeholder="correo@ejemplo.com"></div>
+        <div class="form-group"><label class="form-label">Categoría:</label><input type="text" class="form-input" id="adminCategory" placeholder="Categoría principal"></div>
+        <div class="form-group"><label class="form-label">Subcategoría:</label><input type="text" class="form-input" id="adminSubcategory" placeholder="Subcategoría"></div>
+        <div class="form-group full-width"><label class="form-label">Peso:</label><input type="text" class="form-input" id="adminWeight" placeholder="Peso estimado"></div>
+      </form>
+
+      <button class="save-btn" id="saveBtn">Guardar información y crear QR</button>
+      <div class="qr-display" id="qrDisplay">
+        <h4>Código QR Generado</h4>
+        <div class="qr-code-container"><div id="qrCode"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer></footer>
+
+  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const fileInput = document.getElementById('fileInput');
+    const pickFileBtn = document.getElementById('pickFileBtn');
+    const adminBtn = document.getElementById('adminBtn');
+    const resultText = document.getElementById('result');
+    const hiddenCanvas = document.getElementById('hiddenCanvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+
+    // Campos del análisis
+    const displayCompany = document.getElementById('displayCompany');
+    const displayCountry = document.getElementById('displayCountry');
+    const displayUserName = document.getElementById('displayUserName');
+    const displayUserEmail = document.getElementById('displayUserEmail');
+    const displayCategory = document.getElementById('displayCategory');
+    const displaySubcategory = document.getElementById('displaySubcategory');
+    const displayWeight = document.getElementById('displayWeight');
+    const aiNoteEl = document.getElementById('aiNote');
+
+    // Admin window
+    const adminWindow = document.getElementById('adminWindow');
+    const closeAdminBtn = document.getElementById('closeAdminBtn');
+    const companyInput = document.getElementById('company');
+    const countryInput = document.getElementById('country');
+    const adminUserNameInput = document.getElementById('adminUserName');
+    const adminUserEmailInput = document.getElementById('adminUserEmail');
+    const adminCategoryInput = document.getElementById('adminCategory');
+    const adminSubcategoryInput = document.getElementById('adminSubcategory');
+    const adminWeightInput = document.getElementById('adminWeight');
+    const saveBtn = document.getElementById('saveBtn');
+    const qrDisplay = document.getElementById('qrDisplay');
+    const qrCode = document.getElementById('qrCode');
+    let stream = null, rafId = null, savedAdminData = null, qrcodeInstance = null;
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        stopBtn.disabled = false; startBtn.disabled = true;
+        hiddenCanvas.width = overlayCanvas.width = video.videoWidth || 640;
+        hiddenCanvas.height = overlayCanvas.height = video.videoHeight || 480;
+        scanLoop();
+      } catch (err) {
+        alert("No se pudo acceder a la cámara.");
+      }
+    }
+    function stopCamera() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      stream = null; video.pause(); video.srcObject = null;
+      startBtn.disabled = false; stopBtn.disabled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    }
+
+    function drawLine(ctx, begin, end) {
+      ctx.beginPath(); ctx.moveTo(begin.x, begin.y); ctx.lineTo(end.x, end.y);
+      ctx.lineWidth = 4; ctx.strokeStyle = '#00FFAA'; ctx.stroke();
+    }
+
+    function scanLoop() {
+      const hiddenCtx = hiddenCanvas.getContext('2d');
+      const overlayCtx = overlayCanvas.getContext('2d');
+      function loop() {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          const w = video.videoWidth, h = video.videoHeight;
+          hiddenCanvas.width = overlayCanvas.width = w; hiddenCanvas.height = overlayCanvas.height = h;
+          hiddenCtx.drawImage(video, 0, 0, w, h);
+          const code = jsQR(hiddenCtx.getImageData(0, 0, w, h).data, w, h);
+          overlayCtx.clearRect(0, 0, w, h);
+          if (code) {
+            drawLine(overlayCtx, code.location.topLeftCorner, code.location.topRightCorner);
+            drawLine(overlayCtx, code.location.topRightCorner, code.location.bottomRightCorner);
+            drawLine(overlayCtx, code.location.bottomRightCorner, code.location.bottomLeftCorner);
+            drawLine(overlayCtx, code.location.bottomLeftCorner, code.location.topLeftCorner);
+            resultText.textContent = "✅ Escaneo exitoso";
+            updateAnalysisFromAdmin();
+          } else {
+            resultText.textContent = "❌ No se detectó código QR";
+          }
+        }
+        rafId = requestAnimationFrame(loop);
+      }
+      loop();
+    }
+
+    // Actualizar análisis inteligente con datos del admin
+    function updateAnalysisFromAdmin() {
+      if (!savedAdminData) return;
+      displayCompany.textContent = savedAdminData.company;
+      displayCountry.textContent = savedAdminData.country;
+      displayUserName.textContent = savedAdminData.userName;
+      displayUserEmail.textContent = savedAdminData.userEmail;
+      displayCategory.textContent = savedAdminData.category;
+      displaySubcategory.textContent = savedAdminData.subcategory;
+      displayWeight.textContent = savedAdminData.weight;
+      aiNoteEl.textContent = "Los datos mostrados provienen de la configuración del panel de administración.";
+    }
+
+    // Ventana admin
+    adminBtn.onclick = () => adminWindow.style.display = 'flex';
+    closeAdminBtn.onclick = () => adminWindow.style.display = 'none';
+
+    saveBtn.onclick = () => {
+      const data = {
+        company: companyInput.value,
+        country: countryInput.value,
+        userName: adminUserNameInput.value,
+        userEmail: adminUserEmailInput.value,
+        category: adminCategoryInput.value,
+        subcategory: adminSubcategoryInput.value,
+        weight: adminWeightInput.value
+      };
+      if (Object.values(data).some(v => !v)) return alert("Complete todos los campos.");
+      savedAdminData = data;
+      // Generar QR con los datos
+      if (qrcodeInstance) qrCode.innerHTML = "";
+      qrcodeInstance = new QRCode(qrCode, { text: JSON.stringify(data), width: 200, height: 200 });
+      qrDisplay.style.display = 'block';
+      alert("Información guardada y QR generado con éxito");
+    };
+
+    pickFileBtn.onclick = e => { e.preventDefault(); fileInput.click(); };
+    fileInput.onchange = ev => { const f = ev.target.files[0]; if (f) decodeImageFile(f); fileInput.value = ''; };
+
+    function decodeImageFile(file) {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        hiddenCanvas.width = w; hiddenCanvas.height = h;
+        const ctx = hiddenCanvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+        const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h);
+        resultText.textContent = code ? "✅ Escaneo exitoso" : "❌ No se detectó código QR";
+        if (code) updateAnalysisFromAdmin();
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    }
+
+    startBtn.onclick = startCamera;
+    stopBtn.onclick = stopCamera;
+  </script>
+</body>
+</html>
